@@ -151,7 +151,7 @@ def test_background_removal_on_opaque_jpeg(client):
     d.ellipse([100, 100, 400, 400], fill=(200, 30, 30))
     b = io.BytesIO()
     img.save(b, "JPEG", quality=85)
-    jid, j = run_job(client, b.getvalue(), "a.jpg", width_cm=8, height_cm=8, remove_bg="true")
+    jid, j = run_job(client, b.getvalue(), "a.jpg", width_cm=8, height_cm=8, remove_bg="true", bg_mode="ai")
     if j["status"] == "error":
         pytest.skip(f"نموذج إزالة الخلفية غير متاح: {j['error']}")
     im = Image.open(io.BytesIO(client.get(f"/api/jobs/{jid}/result").content))

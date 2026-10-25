@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +21,7 @@ log = logging.getLogger("dtf.pipeline")
 Image.MAX_IMAGE_PIXELS = None  # نفحص الحجم بأنفسنا قبل فك الترميز
 
 ProgressCB = Callable[[float, str], None]
+_HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 class UserError(Exception):
@@ -31,6 +33,9 @@ class Params:
     width_cm: float
     height_cm: float
     remove_bg: bool = True
+    bg_mode: str = "solid"  # "solid" (خلفية سادة) | "ai" (صور واقعية)
+    bg_tolerance: int = 25  # 0..100 — حساسية اللون في وضع الخلفية السادة
+    bg_color: str = ""  # "#rrggbb" يدوي، أو فارغ للاكتشاف التلقائي
     erode_px: int = 1  # 0..3
     alpha_mode: str = "threshold"  # "threshold" | "keep" (بدون تغيير)
     alpha_threshold: int = 50  # نسبة مئوية 5..95
@@ -73,6 +78,12 @@ def validate_params(p: Params) -> tuple[int, int]:
         )
     if p.alpha_mode not in ("threshold", "keep"):
         raise UserError("خيار الشفافية غير صحيح.")
+    if p.bg_mode not in ("solid", "ai"):
+        raise UserError("وضع إزالة الخلفية غير صحيح.")
+    if not 0 <= p.bg_tolerance <= 100:
+        raise UserError("قيمة حساسية اللون يجب أن تكون بين 0 و 100.")
+    if p.bg_color and not _HEX_RE.match(p.bg_color):
+        raise UserError("لون الخلفية غير صحيح. اختر اللون بالضغط على الصورة.")
     if not 0 <= p.erode_px <= 3:
         raise UserError("قيمة تصغير الحواف يجب أن تكون بين 0 و 3 بكسل.")
     if not 5 <= p.alpha_threshold <= 95:
@@ -177,6 +188,105 @@ def remove_background(rgb: np.ndarray) -> np.ndarray:
     mask = remove(Image.fromarray(rgb, "RGB"), session=session, only_mask=True, post_process_mask=False)
     mask = np.asarray(mask.convert("L") if isinstance(mask, Image.Image) else mask, dtype=np.uint8)
     return np.ascontiguousarray(mask)
+
+
+# ---------------------------------------------------------------------------
+# 2-ب) إزالة الخلفية السادة (flood fill من الحواف)
+# ---------------------------------------------------------------------------
+def hex_to_rgb(c: str) -> np.ndarray:
+    return np.array([int(c[i: i + 2], 16) for i in (1, 3, 5)], dtype=np.uint8)
+
+
+def rgb_to_hex(c) -> str:
+    return "#{:02x}{:02x}{:02x}".format(*(int(v) for v in c))
+
+
+def _lab_distance(rgb: np.ndarray, bg_rgb: np.ndarray) -> np.ndarray:
+    """المسافة اللونية (ΔE في فضاء Lab) بين كل بكسل ولون الخلفية، على شرائح لتوفير الذاكرة."""
+    bg_lab = cv2.cvtColor(bg_rgb.reshape(1, 1, 3).astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab).reshape(3)
+    h = rgb.shape[0]
+    out = np.empty(rgb.shape[:2], dtype=np.float32)
+    step = 1024
+    for y0 in range(0, h, step):
+        lab = cv2.cvtColor(rgb[y0: y0 + step].astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
+        out[y0: y0 + step] = np.sqrt(((lab - bg_lab) ** 2).sum(axis=2))
+    return out
+
+
+def _border_pixels(rgb: np.ndarray) -> np.ndarray:
+    h, w = rgb.shape[:2]
+    t = max(1, int(round(min(h, w) * 0.02)))
+    return np.concatenate(
+        [rgb[:t].reshape(-1, 3), rgb[-t:].reshape(-1, 3), rgb[:, :t].reshape(-1, 3), rgb[:, -t:].reshape(-1, 3)]
+    )
+
+
+def detect_bg_color(rgb: np.ndarray) -> np.ndarray:
+    """أكثر لون شيوعاً على حواف الصورة وزواياها."""
+    border = _border_pixels(rgb)
+    q = (border >> 4).astype(np.int32)
+    key = q[:, 0] * 256 + q[:, 1] * 16 + q[:, 2]
+    best = np.bincount(key).argmax()
+    return np.median(border[key == best], axis=0).astype(np.uint8)
+
+
+def remove_solid_background(
+    rgb: np.ndarray, bg_color: str, tolerance: int
+) -> tuple[np.ndarray, np.ndarray, bool]:
+    """يزيل خلفية سادة بـ flood fill يبدأ من حواف الصورة فقط.
+
+    أي منطقة بنفس لون الخلفية لكنها محاطة بالتصميم (نجمة بيضاء، نص، ثقب حرف O…) لا تُمسّ لأنها
+    غير متصلة بالحافة. بعدها تُحسب ألفا الحافة بفصل لون الخلفية عن لون التصميم (بدل قطع حاد)
+    حتى لا تؤكل التفاصيل الدقيقة.
+
+    يرجع (ألفا، لون الخلفية المستخدم، هل اللون يدوي).
+    """
+    manual = bool(bg_color)
+    bg = hex_to_rgb(bg_color) if manual else detect_bg_color(rgb)
+    thr = max(1.0, tolerance * 0.6)  # ΔE: 0..60
+    dist = _lab_distance(rgb, bg)
+    cand = (dist <= thr).astype(np.uint8)
+
+    border = np.concatenate([cand[0], cand[-1], cand[:, 0], cand[:, -1]])
+    if border.mean() < 0.30:
+        raise UserError(
+            "لم نجد خلفية سادة واضحة على حواف الصورة. اضغط على الصورة لاختيار لون الخلفية بنفسك، "
+            "أو ارفع «حساسية اللون»، أو اختر وضع «صورة واقعية (ذكاء اصطناعي)»."
+        )
+
+    # flood fill من الحواف = المكوّنات المتصلة (اتصال رباعي) التي تلمس حدود الصورة
+    n, labels = cv2.connectedComponents(cand, connectivity=4)
+    edge_labels = np.unique(
+        np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]])
+    )
+    lut = np.zeros(n, dtype=bool)
+    lut[edge_labels] = True
+    lut[0] = False  # 0 = ليست خلفية مرشحة
+    bg_mask = lut[labels]
+    del labels
+
+    # ألفا أساسية: التصميم معتم، والخلفية شفافة
+    alpha = np.where(bg_mask, 0, 255).astype(np.uint8)
+
+    # حافة التصميم: نحسب نسبة المزج بين لون الخلفية ولون التصميم القريب (بدل قطع حاد)
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    near_bg = cv2.dilate(bg_mask.astype(np.uint8), k, iterations=2) > 0
+    band = near_bg & ~bg_mask
+    if band.any():
+        core = (~near_bg).astype(np.uint8) * 255
+        fg_est = defringe(rgb, core) if core.any() else rgb
+        ys, xs = np.nonzero(band)
+        p = rgb[ys, xs].astype(np.float32)
+        f = fg_est[ys, xs].astype(np.float32)
+        b = bg.astype(np.float32)
+        d = f - b
+        denom = (d * d).sum(axis=1)
+        a = np.where(denom > 36.0, ((p - b) * d).sum(axis=1) / np.maximum(denom, 1e-6), 1.0)
+        a = np.clip(a, 0.0, 1.0)
+        a = np.where(a < 0.04, 0.0, a)  # ضجيج JPEG بلون الخلفية
+        a = np.where(a > 0.97, 1.0, a)
+        alpha[ys, xs] = np.round(a * 255).astype(np.uint8)
+    return alpha, bg, manual
 
 
 # ---------------------------------------------------------------------------
@@ -344,14 +454,20 @@ def process_image(
         notes.append("الصورة شفافة أصلاً، فتم تجاوز إزالة الخلفية.")
         progress(0.22, "الصورة شفافة أصلاً — تجاوز إزالة الخلفية")
     elif params.remove_bg:
-        progress(0.05, "إزالة الخلفية… (قد تأخذ نصف دقيقة عند أول تشغيل)")
-        alpha = remove_background(rgb)
+        if params.bg_mode == "solid":
+            progress(0.05, "إزالة الخلفية السادة…")
+            alpha, bg_rgb, manual = remove_solid_background(rgb, params.bg_color, params.bg_tolerance)
+            notes.append(f"لون الخلفية {'المحدد يدوياً' if manual else 'المكتشف تلقائياً'}: {rgb_to_hex(bg_rgb)}")
+            if (alpha == 0).mean() < 0.001:
+                notes.append("لم تُزَل خلفية تُذكر. جرّب رفع «حساسية اللون» أو اختيار لون الخلفية يدوياً.")
+            hint = "خفّض «حساسية اللون» أو اختر وضع «صورة واقعية»."
+        else:
+            progress(0.05, "إزالة الخلفية بالذكاء الاصطناعي… (قد تأخذ نصف دقيقة عند أول تشغيل)")
+            alpha = remove_background(rgb)
+            hint = "جرّب صورة أوضح، أو أوقف خيار «إزالة الخلفية» إذا كانت الصورة جاهزة."
         coverage = float((alpha >= 128).mean())
         if alpha.max() < 20 or coverage < 0.0005:
-            raise UserError(
-                "لم نستطع تحديد التصميم في الصورة بعد إزالة الخلفية. جرّب صورة أوضح، "
-                "أو أوقف خيار «إزالة الخلفية» إذا كانت الصورة جاهزة."
-            )
+            raise UserError("لم نستطع تحديد التصميم في الصورة بعد إزالة الخلفية. " + hint)
         progress(0.22, "تمت إزالة الخلفية")
     else:
         progress(0.22, "تم تخطي إزالة الخلفية")

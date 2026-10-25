@@ -10,6 +10,7 @@
     jobId: null,
     poll: null,
     busy: false,
+    bgColor: "", // "" = اكتشاف تلقائي، أو "#rrggbb" يدوي
     cfg: { max_upload_mb: 20, dpi: 300, min_side_cm: 1, max_side_cm: 120, max_output_mp: 80 },
   };
 
@@ -18,7 +19,9 @@
     thumb: $("#thumb"), fileName: $("#fileName"), fileDetails: $("#fileDetails"), fileError: $("#fileError"),
     maxMb: $("#maxMb"),
     w: $("#w"), h: $("#h"), sizeHint: $("#sizeHint"), sizeError: $("#sizeError"),
-    removeBg: $("#removeBg"), erode: $("#erode"), erodeOut: $("#erodeOut"),
+    removeBg: $("#removeBg"), bgOptions: $("#bgOptions"), solidPanel: $("#solidPanel"), aiHint: $("#aiHint"),
+    bgChip: $("#bgChip"), bgLabel: $("#bgLabel"), bgAuto: $("#bgAuto"), pickWrap: $("#pickWrap"),
+    pickCanvas: $("#pickCanvas"), pickHint: $("#pickHint"), tol: $("#tol"), tolOut: $("#tolOut"), erode: $("#erode"), erodeOut: $("#erodeOut"),
     alpha: $("#alpha"), alphaOut: $("#alphaOut"), alphaKeep: $("#alphaKeep"),
     go: $("#go"),
     progressCard: $("#progressCard"), bar: $("#bar"), barFill: $("#barFill"), stage: $("#stage"),
@@ -66,11 +69,13 @@
       return;
     }
     state.file = f;
+    state.bgColor = "";
     if (el.thumb.dataset.url) URL.revokeObjectURL(el.thumb.dataset.url);
     const url = URL.createObjectURL(f);
     el.thumb.dataset.url = url;
     el.thumb.onload = () => {
       el.fileDetails.textContent = `${el.thumb.naturalWidth}×${el.thumb.naturalHeight} بكسل — ${fmtBytes(f.size)}`;
+      setupPicker();
     };
     el.thumb.onerror = () => {
       state.file = null;
@@ -141,6 +146,90 @@
   }
   [el.erode, el.alpha, el.alphaKeep].forEach((i) => i.addEventListener("input", syncOptions));
   syncOptions();
+
+  /* ---------- إزالة الخلفية: الوضع واللون والحساسية ---------- */
+  const bgMode = () => document.querySelector('input[name="bgMode"]:checked').value;
+  const hex = (r, g, b) => "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
+
+  function syncBg() {
+    const on = el.removeBg.checked;
+    show(el.bgOptions, on);
+    const solid = bgMode() === "solid";
+    show(el.solidPanel, on && solid);
+    show(el.aiHint, on && !solid);
+    const t = +el.tol.value;
+    el.tolOut.textContent = `${t < 15 ? "منخفضة" : t <= 40 ? "متوسطة" : "عالية"} (${t})`;
+  }
+  el.removeBg.addEventListener("change", syncBg);
+  el.tol.addEventListener("input", syncBg);
+  document.querySelectorAll('input[name="bgMode"]').forEach((r) => r.addEventListener("change", syncBg));
+
+  function setBgChip(color, label) {
+    el.bgChip.classList.toggle("checker", !color);
+    el.bgChip.firstElementChild.style.background = color || "transparent";
+    el.bgLabel.textContent = label;
+  }
+
+  // اكتشاف تلقائي للعرض فقط (الخادم يعيد الاكتشاف بنفس الفكرة): أكثر لون شيوعاً على الحواف
+  function detectBorderColor(ctx, w, h) {
+    const t = Math.max(1, Math.round(Math.min(w, h) * 0.02));
+    const strips = [[0, 0, w, t], [0, h - t, w, t], [0, 0, t, h], [w - t, 0, t, h]];
+    const bins = new Map();
+    for (const [x, y, sw, sh] of strips) {
+      const d = ctx.getImageData(x, y, sw, sh).data;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        const k = ((d[i] >> 4) << 8) | ((d[i + 1] >> 4) << 4) | (d[i + 2] >> 4);
+        const e = bins.get(k) || [0, 0, 0, 0];
+        e[0]++; e[1] += d[i]; e[2] += d[i + 1]; e[3] += d[i + 2];
+        bins.set(k, e);
+      }
+    }
+    let best = null;
+    for (const e of bins.values()) if (!best || e[0] > best[0]) best = e;
+    return best ? hex(Math.round(best[1] / best[0]), Math.round(best[2] / best[0]), Math.round(best[3] / best[0])) : "";
+  }
+
+  function updateBgLabel() {
+    if (state.bgColor) {
+      setBgChip(state.bgColor, `لون الخلفية (يدوي): ${state.bgColor}`);
+      show(el.bgAuto, true);
+    } else {
+      const c = state.autoColor || "";
+      setBgChip(c, c ? `لون الخلفية (تلقائي): ${c}` : "لون الخلفية: يُكتشف تلقائياً من حواف الصورة");
+      show(el.bgAuto, false);
+    }
+  }
+
+  function setupPicker() {
+    const img = el.thumb, nw = img.naturalWidth, nh = img.naturalHeight;
+    if (!nw || !nh) return;
+    const s = Math.min(1, 900 / Math.max(nw, nh));
+    const cv = el.pickCanvas;
+    cv.width = Math.max(1, Math.round(nw * s));
+    cv.height = Math.max(1, Math.round(nh * s));
+    const ctx = cv.getContext("2d", { willReadFrequently: true });
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    try { state.autoColor = detectBorderColor(ctx, cv.width, cv.height); } catch (_) { state.autoColor = ""; }
+    show(el.pickWrap, true);
+    show(el.pickHint, true);
+    updateBgLabel();
+  }
+
+  el.pickCanvas.addEventListener("click", (e) => {
+    const cv = el.pickCanvas, r = cv.getBoundingClientRect();
+    const x = Math.min(cv.width - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * cv.width)));
+    const y = Math.min(cv.height - 1, Math.max(0, Math.floor(((e.clientY - r.top) / r.height) * cv.height)));
+    try {
+      const d = cv.getContext("2d").getImageData(x, y, 1, 1).data;
+      if (d[3] < 128) return; // نقطة شفافة: لا معنى لاختيارها
+      state.bgColor = hex(d[0], d[1], d[2]);
+      updateBgLabel();
+    } catch (_) {}
+  });
+  el.bgAuto.addEventListener("click", () => { state.bgColor = ""; updateBgLabel(); });
+  syncBg();
 
   /* ---------- التقدم والنتيجة ---------- */
   function setProgress(frac, stage) {
@@ -243,6 +332,9 @@
     fd.append("width_cm", String(s.w));
     fd.append("height_cm", String(s.h));
     fd.append("remove_bg", el.removeBg.checked ? "true" : "false");
+    fd.append("bg_mode", bgMode());
+    fd.append("bg_tolerance", el.tol.value);
+    fd.append("bg_color", bgMode() === "solid" ? state.bgColor : "");
     fd.append("erode_px", el.erode.value);
     fd.append("alpha_mode", el.alphaKeep.checked ? "keep" : "threshold");
     fd.append("alpha_threshold", el.alpha.value);
@@ -295,6 +387,8 @@
   el.again.addEventListener("click", () => {
     if (state.jobId) { fetch(`/api/jobs/${state.jobId}`, { method: "DELETE", keepalive: true }).catch(() => {}); state.jobId = null; }
     state.file = null;
+    state.bgColor = ""; state.autoColor = "";
+    show(el.pickWrap, false); show(el.pickHint, false); updateBgLabel();
     if (el.thumb.dataset.url) { URL.revokeObjectURL(el.thumb.dataset.url); el.thumb.dataset.url = ""; }
     el.thumb.removeAttribute("src");
     show(el.dropFile, false); show(el.dropEmpty, true);

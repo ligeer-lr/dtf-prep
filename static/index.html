@@ -69,6 +69,39 @@
           <span class="track"></span>
           <span class="label"><strong>إزالة الخلفية</strong><small>تُتجاوز تلقائياً إذا كانت الصورة شفافة أصلاً.</small></span>
         </label>
+
+        <div id="bgOptions">
+          <div class="seg" role="radiogroup" aria-label="طريقة إزالة الخلفية">
+            <label>
+              <input type="radio" name="bgMode" value="solid" checked>
+              <span><strong>تصميم بخلفية سادة</strong><small>شعارات ونصوص وتصاميم بخلفية بلون واحد</small></span>
+            </label>
+            <label>
+              <input type="radio" name="bgMode" value="ai">
+              <span><strong>صورة واقعية (ذكاء اصطناعي)</strong><small>صور أشخاص ومنتجات وخلفيات معقدة</small></span>
+            </label>
+          </div>
+
+          <div id="solidPanel">
+            <div class="bg-pick">
+              <span class="bgchip checker" id="bgChip"><i></i></span>
+              <span id="bgLabel">لون الخلفية: يُكتشف تلقائياً من حواف الصورة</span>
+              <button type="button" class="btn ghost small" id="bgAuto" hidden>رجوع للاكتشاف التلقائي</button>
+            </div>
+            <div class="pick-wrap" id="pickWrap" hidden>
+              <canvas id="pickCanvas" aria-label="الصورة: اضغط على أي نقطة لاختيار لون الخلفية"></canvas>
+            </div>
+            <small class="hint" id="pickHint" hidden>اضغط على الصورة لاختيار لون الخلفية يدوياً.</small>
+
+            <div class="opt-head tol">
+              <label for="tol"><strong>حساسية اللون</strong></label>
+              <output id="tolOut" for="tol">متوسطة (25)</output>
+            </div>
+            <input type="range" id="tol" min="0" max="100" step="5" value="25">
+            <small class="hint">كلما ارتفعت حُذفت ألوان أبعد عن لون الخلفية (مفيد لصور JPG المضغوطة). خفّضها إذا بدأت تأكل من ألوان قريبة من الخلفية. العناصر الداخلية بنفس لون الخلفية (مثل نص أبيض داخل شكل ملوّن) لا تُحذف أبداً.</small>
+          </div>
+          <small class="hint" id="aiHint" hidden>وضع الذكاء الاصطناعي يركّز على العنصر الأبرز في الصورة، وقد يحذف عناصر بيضاء أو نصوصاً منفصلة عن الشكل الرئيسي.</small>
+        </div>
       </div>
 
       <div class="opt">
