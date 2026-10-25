@@ -27,6 +27,7 @@ from . import config
 from .pipeline import (
     Params,
     cleanup_alpha,
+    white_to_alpha,
     cm_to_px,
     compute_bg_alpha,
     defringe,
@@ -168,6 +169,8 @@ class SessionStore:
                     sess.cache.pop(next(iter(sess.cache)))
                 sess.cache[key] = hit
             alpha_raw, rgb_def, bg_rgb, manual = hit
+            if params.white_to_alpha:  # خفيف: لا يدخل في مفتاح التخزين المؤقت
+                rgb_def, alpha_raw = white_to_alpha(rgb_def, alpha_raw, params.white_threshold)
 
             hard = params.alpha_mode == "threshold"
             erode = params.erode_px * self._erode_scale(sess, width_cm, height_cm)

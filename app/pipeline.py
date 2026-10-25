@@ -39,6 +39,9 @@ class Params:
     erode_px: int = 1  # 0..3
     alpha_mode: str = "threshold"  # "threshold" | "keep" (بدون تغيير)
     alpha_threshold: int = 50  # نسبة مئوية 5..95
+    white_to_alpha: bool = False  # الأبيض إلى شفاف (للقمصان الغامقة)
+    white_threshold: int = 30  # 0..100 — مدى اعتبار اللون «أبيض»
+    ai_strength: int = 60  # 0..100 — نسبة Real-ESRGAN في مزجه مع Lanczos
 
 
 @dataclass
@@ -94,6 +97,10 @@ def validate_options(p: Params) -> None:
         raise UserError("قيمة تصغير الحواف يجب أن تكون بين 0 و 3 بكسل.")
     if not 5 <= p.alpha_threshold <= 95:
         raise UserError("قيمة حدة الشفافية يجب أن تكون بين 5 و 95.")
+    if not 0 <= p.white_threshold <= 100:
+        raise UserError("قيمة عتبة الأبيض يجب أن تكون بين 0 و 100.")
+    if not 0 <= p.ai_strength <= 100:
+        raise UserError("قوة التكبير الذكي يجب أن تكون بين 0 و 100.")
 
 
 def check_upload_header(path: Path) -> None:
@@ -428,6 +435,28 @@ def compute_bg_alpha(
     return alpha, bg_rgb, manual
 
 
+def white_to_alpha(
+    rgb: np.ndarray, alpha: np.ndarray, threshold: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """«الأبيض إلى شفاف» (color to alpha): يحوّل القريب من الأبيض إلى شفاف بتدرج ناعم.
+
+    المقياس هو المسافة اللونية (Lab ΔE) عن الأبيض النقي، فالكريمي والبيج (ΔE أكبر من ~12)
+    لا يُعتبران أبيض عند القيم المعتادة. يشمل كل البكسلات (حتى البقع البيضاء داخل التصميم).
+    اللون يُفكّ مزجه عن الأبيض (c = a·f + (1−a)·255) فلا تبقى هالة بيضاء على الحواف.
+    يرجع (rgb جديد، alpha جديد).
+    """
+    hi = 4.0 + 0.10 * threshold  # ΔE الذي يصبح عنده اللون معتماً كلياً
+    lo = hi * 0.4  # ΔE الذي يصبح عنده شفافاً كلياً
+    d = _lab_distance(rgb, np.array([255, 255, 255], dtype=np.uint8))
+    a = np.clip((d - lo) / (hi - lo), 0.0, 1.0).astype(np.float32)
+    a_safe = np.maximum(a, 0.02)[..., None]
+    f = (rgb.astype(np.float32) - 255.0 * (1.0 - a[..., None])) / a_safe
+    new_rgb = np.clip(f, 0, 255).astype(np.uint8)
+    new_alpha = np.clip(alpha.astype(np.float32) * a, 0, 255).round().astype(np.uint8)
+    # املأ المناطق الشفافة الجديدة بألوان الجوار (حتى لا ينزف الأبيض/الأسود عند التكبير)
+    return defringe(new_rgb, new_alpha), new_alpha
+
+
 def cleanup_alpha(alpha: np.ndarray, erode_px: float, hard_threshold: Optional[int]) -> np.ndarray:
     """تصغير الحواف ← تنعيم ← (اختيارياً) دفع الشفافية الجزئية نحو شفاف/معتم حول العتبة."""
     alpha = erode_alpha(alpha, erode_px)
@@ -516,6 +545,11 @@ def process_image(
     # ---- 3) تنظيف الحواف  +  4) الشفافية الجزئية ----
     progress(0.24, "إزالة الهالة حول التصميم…")
     rgb = defringe(rgb, alpha)
+    if params.white_to_alpha:
+        progress(0.27, "تحويل الأبيض إلى شفاف…")
+        rgb, alpha = white_to_alpha(rgb, alpha, params.white_threshold)
+        if (alpha > 0).sum() < 0.0005 * alpha.size:
+            raise UserError("لم يبقَ شيء من التصميم بعد تحويل الأبيض إلى شفاف. خفّض عتبة الأبيض أو أوقف الخيار.")
     progress(0.30, "تصغير الحواف وتنعيمها ومعالجة الشفافية الجزئية…")
     hard = params.alpha_mode == "threshold"
     alpha = cleanup_alpha(alpha, params.erode_px, params.alpha_threshold if hard else None)
@@ -527,8 +561,11 @@ def process_image(
     remaining = cw / w
     passes = 0
     ai_used = False
+    strength = params.ai_strength / 100.0
     if remaining > 1.0 + 1e-6:
-        if w * h > config.ESRGAN_MAX_INPUT_PIXELS:
+        if strength <= 0:
+            notes.append("قوة التكبير الذكي 0، فاستُخدم تكبير Lanczos فقط.")
+        elif w * h > config.ESRGAN_MAX_INPUT_PIXELS:
             notes.append("الصورة عالية الدقة أصلاً، فاستُخدم تكبير Lanczos بدل الذكاء الاصطناعي لتسريع المعالجة.")
         else:
             while (
@@ -542,11 +579,16 @@ def process_image(
                 if passes:
                     label += f" — المرحلة {passes + 1}"
                 progress(lo, label + "…")
-                cur = upscaler.upscale4x(
+                ai = upscaler.upscale4x(
                     cur,
                     cur_alpha,
                     lambda f, lo=lo, hi=hi, label=label: progress(lo + (hi - lo) * f, f"{label}… {int(f * 100)}%"),
                 )
+                if strength < 1.0:
+                    # مزج مع Lanczos يخفف أثر التكبير الذكي (مثل تشوّه نقاط الهاف تون)
+                    lz = cv2.resize(cur, (ai.shape[1], ai.shape[0]), interpolation=cv2.INTER_LANCZOS4)
+                    ai = cv2.addWeighted(ai, strength, lz, 1.0 - strength, 0)
+                cur = ai
                 cur_alpha = cv2.resize(cur_alpha, (cur.shape[1], cur.shape[0]), interpolation=cv2.INTER_LINEAR)
                 remaining /= 4.0
                 passes += 1

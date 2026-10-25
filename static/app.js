@@ -4,7 +4,7 @@
   const $ = (s) => document.querySelector(s);
   const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
   const ALLOWED_EXT = /\.(png|jpe?g|webp)$/i;
-  const DEFAULTS = { mode: "solid", tol: 25, erode: 1, alpha: 50, alphaKeep: false };
+  const DEFAULTS = { mode: "solid", tol: 25, erode: 1, alpha: 50, alphaKeep: false, w2a: false, w2aT: 30, aiS: 60 };
   const DEFAULT_WIDTH_CM = 30;
   const MAX_PREVIEW_SIDE = 1000;
   const MAX_ZOOM = 16;
@@ -35,6 +35,7 @@
     bgChip: $("#bgChip"), bgLabel: $("#bgLabel"), bgAuto: $("#bgAuto"),
     tol: $("#tol"), tolOut: $("#tolOut"), erode: $("#erode"), erodeOut: $("#erodeOut"),
     alpha: $("#alpha"), alphaOut: $("#alphaOut"), alphaKeep: $("#alphaKeep"),
+    w2a: $("#w2a"), w2aBox: $("#w2aBox"), w2aT: $("#w2aT"), w2aOut: $("#w2aOut"), aiS: $("#aiS"), aiSOut: $("#aiSOut"),
     download: $("#download"), reset: $("#reset"),
     modal: $("#finalModal"), finalTitle: $("#finalTitle"), finalProgress: $("#finalProgress"), bar: $("#bar"), barFill: $("#barFill"),
     stage: $("#stage"), pct: $("#pct"), finalError: $("#finalError"), finalDone: $("#finalDone"), finalNotes: $("#finalNotes"),
@@ -302,14 +303,20 @@
     el.erodeOut.textContent = e === 0 ? "بدون تصغير" : `${e} بكسل`;
     el.alpha.disabled = el.alphaKeep.checked;
     el.alphaOut.textContent = el.alphaKeep.checked ? "بدون تغيير" : `${a < 35 ? "خفيفة" : a <= 65 ? "معتدلة" : "عالية"} (${a}%)`;
+
+    show(el.w2aBox, el.w2a.checked);
+    el.w2aOut.textContent = `${el.w2aT.value}`;
+    const sv = +el.aiS.value;
+    el.aiSOut.textContent = sv === 0 ? "Lanczos فقط" : sv === 100 ? "ذكاء كامل (100%)" : `${sv}%`;
   }
 
   document.querySelectorAll('input[name="bgMode"]').forEach((i) => i.addEventListener("change", () => { syncUI(); schedulePreview(0); }));
-  [el.tol, el.erode, el.alpha, el.alphaKeep].forEach((i) => i.addEventListener("input", () => { syncUI(); schedulePreview(60); }));
+  [el.tol, el.erode, el.alpha, el.alphaKeep, el.w2a, el.w2aT, el.aiS].forEach((i) => i.addEventListener("input", () => { syncUI(); schedulePreview(60); }));
 
   el.reset.addEventListener("click", () => {
     document.querySelector(`input[name="bgMode"][value="${DEFAULTS.mode}"]`).checked = true;
     el.tol.value = DEFAULTS.tol; el.erode.value = DEFAULTS.erode; el.alpha.value = DEFAULTS.alpha; el.alphaKeep.checked = DEFAULTS.alphaKeep;
+    el.w2a.checked = DEFAULTS.w2a; el.w2aT.value = DEFAULTS.w2aT; el.aiS.value = DEFAULTS.aiS;
     state.bgColor = "";
     syncUI(); schedulePreview(0);
   });
@@ -449,6 +456,9 @@
     fd.append("erode_px", el.erode.value);
     fd.append("alpha_mode", el.alphaKeep.checked ? "keep" : "threshold");
     fd.append("alpha_threshold", el.alpha.value);
+    fd.append("white_to_alpha", el.w2a.checked ? "true" : "false");
+    fd.append("white_threshold", el.w2aT.value);
+    fd.append("ai_strength", el.aiS.value);
     fd.append("width_cm", s.ok ? String(s.w) : "0");
     fd.append("height_cm", s.ok ? String(s.h) : "0");
     return fd;

@@ -146,6 +146,29 @@
           <small class="hint">الظلال والتدرجات شبه الشفافة تظهر كبقع في الطباعة؛ العتبة تحوّلها إلى شفاف أو معتم.</small>
         </section>
 
+        <!-- الأبيض إلى شفاف -->
+        <section class="card">
+          <h2>الأبيض إلى شفاف</h2>
+          <label class="switch">
+            <input type="checkbox" id="w2a">
+            <span class="track"></span>
+            <span class="label"><strong>الأبيض إلى شفاف (للقمصان الغامقة)</strong><small>يحوّل الأبيض وما يقاربه إلى شفاف بتدرج ناعم، حتى البقع البيضاء داخل التصميم.</small></span>
+          </label>
+          <div id="w2aBox" hidden>
+            <div class="opt-head"><label for="w2aT"><strong>عتبة الأبيض</strong></label><output id="w2aOut" for="w2aT"></output></div>
+            <input type="range" id="w2aT" min="0" max="100" step="5" value="30">
+            <small class="hint">كلما ارتفعت شمل ألواناً أبعد عن الأبيض. الكريمي والبيج لا يُعتبران أبيض عند القيم المعتادة.</small>
+          </div>
+        </section>
+
+        <!-- التكبير الذكي -->
+        <section class="card">
+          <h2>التكبير</h2>
+          <div class="opt-head"><label for="aiS"><strong>قوة التكبير الذكي</strong></label><output id="aiSOut" for="aiS"></output></div>
+          <input type="range" id="aiS" min="0" max="100" step="5" value="60">
+          <small class="hint">نسبة Real-ESRGAN في مزجه مع Lanczos. خفّضها إذا ظهرت نقاط الهاف تون (مثل الغيوم) مشوّهة. تؤثر على الملف النهائي فقط وليس على المعاينة.</small>
+        </section>
+
         <div class="cta">
           <button type="button" class="btn primary big" id="download" disabled>حمّل الملف النهائي</button>
           <button type="button" class="btn ghost" id="reset">رجوع للافتراضي</button>

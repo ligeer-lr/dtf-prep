@@ -126,7 +126,8 @@ def _upload_error(e: UserError) -> JSONResponse:
 
 
 def _make_params(
-    width_cm, height_cm, remove_bg, bg_mode, bg_tolerance, bg_color, erode_px, alpha_mode, alpha_threshold
+    width_cm, height_cm, remove_bg, bg_mode, bg_tolerance, bg_color, erode_px, alpha_mode, alpha_threshold,
+    white_to_alpha=False, white_threshold=30, ai_strength=60,
 ) -> Params:
     return Params(
         width_cm=width_cm,
@@ -138,6 +139,9 @@ def _make_params(
         erode_px=erode_px,
         alpha_mode=alpha_mode,
         alpha_threshold=alpha_threshold,
+        white_to_alpha=white_to_alpha,
+        white_threshold=white_threshold,
+        ai_strength=ai_strength,
     )
 
 
@@ -157,10 +161,14 @@ async def start_process(
     erode_px: int = Form(1),
     alpha_mode: str = Form("threshold"),
     alpha_threshold: int = Form(50),
+    white_to_alpha: bool = Form(False),
+    white_threshold: int = Form(30),
+    ai_strength: int = Form(60),
 ):
     """المعالجة الكاملة بدقة الطباعة. تقبل ملفاً مرفوعاً، أو session_id لجلسة المعاينة (بدون إعادة رفع)."""
     params = _make_params(
-        width_cm, height_cm, remove_bg, bg_mode, bg_tolerance, bg_color, erode_px, alpha_mode, alpha_threshold
+        width_cm, height_cm, remove_bg, bg_mode, bg_tolerance, bg_color, erode_px, alpha_mode, alpha_threshold,
+        white_to_alpha, white_threshold, ai_strength,
     )
     validate_params(params)  # نفشل بسرعة قبل حفظ أي شيء
 
@@ -232,13 +240,17 @@ def session_preview(
     erode_px: int = Form(1),
     alpha_mode: str = Form("threshold"),
     alpha_threshold: int = Form(50),
+    white_to_alpha: bool = Form(False),
+    white_threshold: int = Form(30),
+    ai_strength: int = Form(60),
 ):
     """معاينة سريعة على نسخة مصغّرة: PNG شفاف بنفس مراحل المعالجة (بدون تكبير)."""
     sess = sessions.get(sid)
     if sess is None:
         return _err(SESSION_GONE, 404)
     params = _make_params(
-        width_cm, height_cm, remove_bg, bg_mode, bg_tolerance, bg_color, erode_px, alpha_mode, alpha_threshold
+        width_cm, height_cm, remove_bg, bg_mode, bg_tolerance, bg_color, erode_px, alpha_mode, alpha_threshold,
+        white_to_alpha, white_threshold, ai_strength,
     )
     validate_options(params)
     res = sessions.render_preview(sess, params, width_cm, height_cm)
