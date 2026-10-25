@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+models/
+tmp/
+*.part
+sample_logo.jpg
+.DS_Store

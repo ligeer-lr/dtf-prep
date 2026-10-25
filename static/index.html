@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f172a">
+  <title>DTF Prep — تجهيز تصاميم طباعة DTF</title>
+  <meta name="description" content="جهّز تصميمك لطباعة DTF على التيشيرت: إزالة الخلفية، تنظيف الحواف، وتكبير بدقة 300 DPI بمقاس الطباعة الفعلي.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f172a'/%3E%3Ctext x='32' y='41' font-family='Arial' font-weight='800' font-size='24' text-anchor='middle' fill='%232dd4bf'%3EDTF%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <div class="brand"><span class="logo">DTF</span><span class="name">Prep</span></div>
+      <p class="lead">جهّز تصميمك لطباعة DTF على التيشيرت: خلفية شفافة، حواف نظيفة، وملف PNG بمقاس الطباعة الفعلي بدقة 300 DPI.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- 1) رفع الصورة -->
+    <section class="card" aria-labelledby="h-upload">
+      <h2 id="h-upload"><span class="num">1</span>ارفع الصورة</h2>
+      <label class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint">
+        <input type="file" id="file" accept="image/png,image/jpeg,image/webp">
+        <div class="drop-empty" id="dropEmpty">
+          <svg viewBox="0 0 24 24" width="38" height="38" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+          <strong>اسحب الصورة وأفلتها هنا</strong>
+          <span>أو اضغط لاختيار ملف من جهازك</span>
+          <small id="dropHint">PNG أو JPG أو WebP — حتى <span id="maxMb">20</span> ميجابايت</small>
+        </div>
+        <div class="drop-file" id="dropFile" hidden>
+          <img id="thumb" alt="معاينة الصورة المرفوعة">
+          <div class="file-meta">
+            <strong id="fileName" dir="auto"></strong>
+            <span id="fileDetails"></span>
+            <span class="link">اضغط أو أفلت صورة أخرى للاستبدال</span>
+          </div>
+        </div>
+      </label>
+      <p class="msg err" id="fileError" role="alert" hidden></p>
+    </section>
+
+    <!-- 2) مقاس الطباعة -->
+    <section class="card" aria-labelledby="h-size">
+      <h2 id="h-size"><span class="num">2</span>مقاس الطباعة</h2>
+      <div class="size-row">
+        <label class="field">
+          <span>العرض (سم)</span>
+          <input type="text" class="num-input" id="w" inputmode="decimal" placeholder="مثال: 60" autocomplete="off" enterkeyhint="next">
+        </label>
+        <span class="times" aria-hidden="true">×</span>
+        <label class="field">
+          <span>الطول (سم)</span>
+          <input type="text" class="num-input" id="h" inputmode="decimal" placeholder="مثال: 40" autocomplete="off" enterkeyhint="done">
+        </label>
+      </div>
+      <p class="hint" id="sizeHint">أدخل المقاس لعرض أبعاد الملف الناتج بالبكسل.</p>
+      <p class="msg err" id="sizeError" role="alert" hidden></p>
+    </section>
+
+    <!-- 3) خيارات المعالجة -->
+    <section class="card" aria-labelledby="h-opts">
+      <h2 id="h-opts"><span class="num">3</span>خيارات المعالجة</h2>
+
+      <div class="opt">
+        <label class="switch">
+          <input type="checkbox" id="removeBg" checked>
+          <span class="track"></span>
+          <span class="label"><strong>إزالة الخلفية</strong><small>تُتجاوز تلقائياً إذا كانت الصورة شفافة أصلاً.</small></span>
+        </label>
+      </div>
+
+      <div class="opt">
+        <div class="opt-head">
+          <label for="erode"><strong>تصغير الحواف</strong></label>
+          <output id="erodeOut" for="erode">1 بكسل</output>
+        </div>
+        <input type="range" id="erode" min="0" max="3" step="1" value="1">
+        <div class="ticks" aria-hidden="true"><span>0</span><span>1</span><span>2</span><span>3</span></div>
+        <small class="hint">يقصّ حافة التصميم للداخل لإخفاء أي هالة متبقية من الخلفية القديمة.</small>
+      </div>
+
+      <div class="opt">
+        <div class="opt-head">
+          <label for="alpha"><strong>حدة الشفافية</strong></label>
+          <output id="alphaOut" for="alpha">معتدلة (50%)</output>
+        </div>
+        <input type="range" id="alpha" min="5" max="95" step="5" value="50">
+        <label class="check">
+          <input type="checkbox" id="alphaKeep">
+          <span>بدون تغيير (إبقاء الشفافية الجزئية كما هي)</span>
+        </label>
+        <small class="hint">الظلال والتدرجات شبه الشفافة تظهر كبقع في الطباعة. هذه القيمة تحدد العتبة: البكسل الأقل عتمة منها يصبح شفافاً تماماً، والأعلى يصبح معتماً.</small>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button type="button" class="btn primary big" id="go" disabled>جهّز التصميم</button>
+    </div>
+
+    <!-- التقدم -->
+    <section class="card" id="progressCard" aria-live="polite" hidden>
+      <h2>جارٍ التجهيز…</h2>
+      <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar">
+        <div class="fill" id="barFill"></div>
+      </div>
+      <div class="bar-meta"><span id="stage">…</span><b id="pct">0%</b></div>
+      <ul class="notes" id="liveNotes"></ul>
+    </section>
+
+    <!-- خطأ -->
+    <section class="card error-card" id="errorCard" role="alert" hidden>
+      <h2>تعذّرت المعالجة</h2>
+      <p id="errorText"></p>
+      <ul class="notes" id="errorNotes"></ul>
+    </section>
+
+    <!-- النتيجة -->
+    <section class="card" id="resultCard" hidden>
+      <h2>النتيجة</h2>
+      <ul class="notes" id="resultNotes"></ul>
+
+      <div class="compare">
+        <figure>
+          <figcaption>قبل</figcaption>
+          <div class="stage checker" data-stage><img id="imgBefore" alt="الصورة قبل المعالجة"></div>
+        </figure>
+        <figure>
+          <figcaption>بعد</figcaption>
+          <div class="stage checker" data-stage><img id="imgAfter" alt="التصميم بعد المعالجة"></div>
+        </figure>
+      </div>
+
+      <div class="swatches-wrap">
+        <strong>معاينة على لون التيشيرت</strong>
+        <div class="swatches" id="swatches" role="radiogroup" aria-label="لون خلفية المعاينة">
+          <button type="button" role="radio" aria-checked="true" class="sw active" data-color="" title="شفاف"><i class="checker"></i><span>شفاف</span></button>
+          <button type="button" role="radio" aria-checked="false" class="sw" data-color="#ffffff" title="أبيض"><i style="background:#ffffff"></i><span>أبيض</span></button>
+          <button type="button" role="radio" aria-checked="false" class="sw" data-color="#111111" title="أسود"><i style="background:#111111"></i><span>أسود</span></button>
+          <button type="button" role="radio" aria-checked="false" class="sw" data-color="#c1121f" title="أحمر"><i style="background:#c1121f"></i><span>أحمر</span></button>
+          <button type="button" role="radio" aria-checked="false" class="sw" data-color="#1b2a49" title="كحلي"><i style="background:#1b2a49"></i><span>كحلي</span></button>
+          <button type="button" role="radio" aria-checked="false" class="sw" data-color="#8a8f98" title="رمادي"><i style="background:#8a8f98"></i><span>رمادي</span></button>
+          <label class="sw custom" id="customSw" title="لون مخصص">
+            <i id="customDot" class="rainbow"></i><span>لون مخصص</span>
+            <input type="color" id="customColor" value="#2f855a" aria-label="اختيار لون مخصص">
+          </label>
+        </div>
+        <small class="hint">انتبه للألوان التي تضيع أو تختفي على لون التيشيرت — خصوصاً الأسود على الأسود والأبيض على الأبيض.</small>
+      </div>
+
+      <ul class="chips" id="chips"></ul>
+
+      <div class="actions row">
+        <a class="btn primary big" id="download" href="#" download>تحميل PNG</a>
+        <button type="button" class="btn ghost" id="again">معالجة صورة جديدة</button>
+      </div>
+      <p class="hint">المعاينة مصغّرة للعرض فقط؛ الملف المحمَّل بمقاس الطباعة الكامل. تُحذف الملفات من الخادم تلقائياً بعد فترة قصيرة.</p>
+    </section>
+  </main>
+
+  <footer class="wrap foot">DTF Prep — تجهيز التصميم فقط (بدون White Base أو RIP أو Gang Sheet)</footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
