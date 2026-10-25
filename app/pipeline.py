@@ -76,6 +76,12 @@ def validate_params(p: Params) -> tuple[int, int]:
             f"مقاس الطباعة كبير على الخادم: الملف الناتج سيكون {tw}×{th} بكسل (≈{tw * th / 1e6:.0f} ميجابكسل) "
             f"والحد الأقصى {mp:.0f} ميجابكسل (يعادل تقريباً {side_cm:.0f}×{side_cm:.0f} سم). صغّر المقاس وحاول مجدداً."
         )
+    validate_options(p)
+    return tw, th
+
+
+def validate_options(p: Params) -> None:
+    """يتحقق من خيارات المعالجة (بدون المقاس). تستخدمها المعاينة المباشرة أيضاً."""
     if p.alpha_mode not in ("threshold", "keep"):
         raise UserError("خيار الشفافية غير صحيح.")
     if p.bg_mode not in ("solid", "ai"):
@@ -88,7 +94,6 @@ def validate_params(p: Params) -> tuple[int, int]:
         raise UserError("قيمة تصغير الحواف يجب أن تكون بين 0 و 3 بكسل.")
     if not 5 <= p.alpha_threshold <= 95:
         raise UserError("قيمة حدة الشفافية يجب أن تكون بين 5 و 95.")
-    return tw, th
 
 
 def check_upload_header(path: Path) -> None:
@@ -347,11 +352,19 @@ def defringe(rgb: np.ndarray, alpha: np.ndarray) -> np.ndarray:
     return out
 
 
-def erode_alpha(alpha: np.ndarray, px: int) -> np.ndarray:
-    if px <= 0:
+def erode_alpha(alpha: np.ndarray, px: float) -> np.ndarray:
+    """تصغير الحواف. القيم الصحيحة (المعالجة الكاملة) تعمل كما كانت؛ والكسرية تُستخدم في المعاينة
+    المصغّرة لتمثيل نفس النسبة من الصورة (مثلاً 1 بكسل من 3000 = 0.33 بكسل من 1000)."""
+    if px <= 1e-3:
         return alpha
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    return cv2.erode(alpha, k, iterations=px)
+    whole = int(px)
+    frac = px - whole
+    out = cv2.erode(alpha, k, iterations=whole) if whole else alpha
+    if frac > 1e-3:
+        nxt = cv2.erode(out, k)
+        out = np.rint(out.astype(np.float32) * (1.0 - frac) + nxt.astype(np.float32) * frac).astype(np.uint8)
+    return out
 
 
 def smooth_alpha(alpha: np.ndarray) -> np.ndarray:
@@ -389,6 +402,39 @@ def sharpen_alpha(alpha: np.ndarray, threshold_pct: int) -> np.ndarray:
     x = alpha.astype(np.float32) / 255.0
     y = np.clip(0.5 + (x - t) / (2.0 * _RAMP), 0.0, 1.0)
     return np.clip(y * 255.0 + 0.5, 0, 255).astype(np.uint8)
+
+
+# ---------------------------------------------------------------------------
+# مراحل مشتركة بين المعالجة الكاملة والمعاينة المباشرة
+# ---------------------------------------------------------------------------
+def compute_bg_alpha(
+    rgb: np.ndarray, params: Params, ai_mask: Optional[np.ndarray] = None
+) -> tuple[np.ndarray, Optional[np.ndarray], bool]:
+    """مرحلة إزالة الخلفية. ترجع (ألفا، لون الخلفية للوضع السادة وإلا None، هل اللون يدوي).
+
+    ai_mask: قناع جاهز من الذكاء الاصطناعي (تستخدمه المعاينة لتفادي إعادة الحساب).
+    """
+    bg_rgb: Optional[np.ndarray] = None
+    manual = False
+    if params.bg_mode == "solid":
+        alpha, bg_rgb, manual = remove_solid_background(rgb, params.bg_color, params.bg_tolerance)
+        hint = "خفّض «حساسية اللون» أو اختر وضع «صورة واقعية»."
+    else:
+        alpha = ai_mask if ai_mask is not None else remove_background(rgb)
+        hint = "جرّب صورة أوضح، أو أوقف خيار «إزالة الخلفية» إذا كانت الصورة جاهزة."
+    coverage = float((alpha >= 128).mean())
+    if alpha.max() < 20 or coverage < 0.0005:
+        raise UserError("لم نستطع تحديد التصميم في الصورة بعد إزالة الخلفية. " + hint)
+    return alpha, bg_rgb, manual
+
+
+def cleanup_alpha(alpha: np.ndarray, erode_px: float, hard_threshold: Optional[int]) -> np.ndarray:
+    """تصغير الحواف ← تنعيم ← (اختيارياً) دفع الشفافية الجزئية نحو شفاف/معتم حول العتبة."""
+    alpha = erode_alpha(alpha, erode_px)
+    alpha = smooth_alpha(alpha)
+    if hard_threshold is not None:
+        alpha = sharpen_alpha(alpha, hard_threshold)
+    return alpha
 
 
 # ---------------------------------------------------------------------------
@@ -456,34 +502,24 @@ def process_image(
     elif params.remove_bg:
         if params.bg_mode == "solid":
             progress(0.05, "إزالة الخلفية السادة…")
-            alpha, bg_rgb, manual = remove_solid_background(rgb, params.bg_color, params.bg_tolerance)
+        else:
+            progress(0.05, "إزالة الخلفية بالذكاء الاصطناعي… (قد تأخذ نصف دقيقة عند أول تشغيل)")
+        alpha, bg_rgb, manual = compute_bg_alpha(rgb, params)
+        if bg_rgb is not None:
             notes.append(f"لون الخلفية {'المحدد يدوياً' if manual else 'المكتشف تلقائياً'}: {rgb_to_hex(bg_rgb)}")
             if (alpha == 0).mean() < 0.001:
                 notes.append("لم تُزَل خلفية تُذكر. جرّب رفع «حساسية اللون» أو اختيار لون الخلفية يدوياً.")
-            hint = "خفّض «حساسية اللون» أو اختر وضع «صورة واقعية»."
-        else:
-            progress(0.05, "إزالة الخلفية بالذكاء الاصطناعي… (قد تأخذ نصف دقيقة عند أول تشغيل)")
-            alpha = remove_background(rgb)
-            hint = "جرّب صورة أوضح، أو أوقف خيار «إزالة الخلفية» إذا كانت الصورة جاهزة."
-        coverage = float((alpha >= 128).mean())
-        if alpha.max() < 20 or coverage < 0.0005:
-            raise UserError("لم نستطع تحديد التصميم في الصورة بعد إزالة الخلفية. " + hint)
         progress(0.22, "تمت إزالة الخلفية")
     else:
         progress(0.22, "تم تخطي إزالة الخلفية")
 
-    # ---- 3) تنظيف الحواف ----
+    # ---- 3) تنظيف الحواف  +  4) الشفافية الجزئية ----
     progress(0.24, "إزالة الهالة حول التصميم…")
     rgb = defringe(rgb, alpha)
-    progress(0.30, "تصغير الحواف وتنعيمها…")
-    alpha = erode_alpha(alpha, params.erode_px)
-    alpha = smooth_alpha(alpha)
-
-    # ---- 4) الشفافية الجزئية ----
-    progress(0.34, "معالجة الشفافية الجزئية…")
+    progress(0.30, "تصغير الحواف وتنعيمها ومعالجة الشفافية الجزئية…")
     hard = params.alpha_mode == "threshold"
-    if hard:
-        alpha = sharpen_alpha(alpha, params.alpha_threshold)
+    alpha = cleanup_alpha(alpha, params.erode_px, params.alpha_threshold if hard else None)
+    progress(0.34, "معالجة الشفافية الجزئية…")
 
     # ---- 5) التكبير لدقة الطباعة ----
     cur = rgb

@@ -61,3 +61,8 @@ PREVIEW_MAX_SIDE = 1400
 
 # rembg يقرأ هذا المتغير لتحديد مكان تنزيل نماذجه
 os.environ.setdefault("U2NET_HOME", str(MODELS_DIR))
+
+# ---- المعاينة المباشرة والجلسات ----
+LIVE_PREVIEW_SIDE = _int("DTF_LIVE_PREVIEW_SIDE", 1000)  # أطول ضلع للنسخة المصغّرة
+SESSION_TTL_SECONDS = _int("DTF_SESSION_TTL_SECONDS", 60 * 60)
+MAX_SESSIONS = _int("DTF_MAX_SESSIONS", 12)

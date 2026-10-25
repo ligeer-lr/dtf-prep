@@ -5,194 +5,174 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0f172a">
   <title>DTF Prep — تجهيز تصاميم طباعة DTF</title>
-  <meta name="description" content="جهّز تصميمك لطباعة DTF على التيشيرت: إزالة الخلفية، تنظيف الحواف، وتكبير بدقة 300 DPI بمقاس الطباعة الفعلي.">
+  <meta name="description" content="جهّز تصميمك لطباعة DTF على التيشيرت: إزالة الخلفية، تنظيف الحواف، وتكبير بدقة 300 DPI بمقاس الطباعة الفعلي، مع معاينة مباشرة.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f172a'/%3E%3Ctext x='32' y='41' font-family='Arial' font-weight='800' font-size='24' text-anchor='middle' fill='%232dd4bf'%3EDTF%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="top">
-    <div class="wrap">
-      <div class="brand"><span class="logo">DTF</span><span class="name">Prep</span></div>
-      <p class="lead">جهّز تصميمك لطباعة DTF على التيشيرت: خلفية شفافة، حواف نظيفة، وملف PNG بمقاس الطباعة الفعلي بدقة 300 DPI.</p>
+    <div class="top-in">
+      <div class="brand" dir="ltr"><span class="logo">DTF</span><span class="name">Prep</span></div>
+      <p class="tag">جهّز تصميمك لطباعة DTF</p>
+      <button type="button" class="btn ghost light small" id="changeImg" hidden>تغيير الصورة</button>
     </div>
   </header>
 
-  <main class="wrap">
-    <!-- 1) رفع الصورة -->
-    <section class="card" aria-labelledby="h-upload">
-      <h2 id="h-upload"><span class="num">1</span>ارفع الصورة</h2>
+  <main>
+    <!-- رفع الصورة -->
+    <section class="upload-stage" id="uploadStage">
       <label class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint">
         <input type="file" id="file" accept="image/png,image/jpeg,image/webp">
-        <div class="drop-empty" id="dropEmpty">
-          <svg viewBox="0 0 24 24" width="38" height="38" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
-          <strong>اسحب الصورة وأفلتها هنا</strong>
-          <span>أو اضغط لاختيار ملف من جهازك</span>
-          <small id="dropHint">PNG أو JPG أو WebP — حتى <span id="maxMb">20</span> ميجابايت</small>
-        </div>
-        <div class="drop-file" id="dropFile" hidden>
-          <img id="thumb" alt="معاينة الصورة المرفوعة">
-          <div class="file-meta">
-            <strong id="fileName" dir="auto"></strong>
-            <span id="fileDetails"></span>
-            <span class="link">اضغط أو أفلت صورة أخرى للاستبدال</span>
-          </div>
-        </div>
+        <svg viewBox="0 0 24 24" width="44" height="44" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+        <strong>اسحب الصورة وأفلتها هنا</strong>
+        <span>أو اضغط لاختيار ملف من جهازك</span>
+        <small id="dropHint">PNG أو JPG أو WebP — حتى <span id="maxMb">20</span> ميجابايت</small>
       </label>
       <p class="msg err" id="fileError" role="alert" hidden></p>
+      <p class="intro">يشتغل على التصميم فقط: خلفية شفافة، حواف نظيفة، وملف PNG بمقاس الطباعة الفعلي بدقة 300 DPI. بدون White Base أو RIP أو Gang Sheet.</p>
     </section>
 
-    <!-- 2) مقاس الطباعة -->
-    <section class="card" aria-labelledby="h-size">
-      <h2 id="h-size"><span class="num">2</span>مقاس الطباعة</h2>
-      <div class="size-row">
-        <label class="field">
-          <span>العرض (سم)</span>
-          <input type="text" class="num-input" id="w" inputmode="decimal" placeholder="مثال: 60" autocomplete="off" enterkeyhint="next">
-        </label>
-        <span class="times" aria-hidden="true">×</span>
-        <label class="field">
-          <span>الطول (سم)</span>
-          <input type="text" class="num-input" id="h" inputmode="decimal" placeholder="مثال: 40" autocomplete="off" enterkeyhint="done">
-        </label>
-      </div>
-      <p class="hint" id="sizeHint">أدخل المقاس لعرض أبعاد الملف الناتج بالبكسل.</p>
-      <p class="msg err" id="sizeError" role="alert" hidden></p>
-    </section>
+    <!-- مساحة العمل -->
+    <section class="workspace" id="workspace" hidden>
+      <div class="stage-col">
+        <div class="views-bar">
+          <div class="zoom" role="group" aria-label="التكبير">
+            <button type="button" class="icon-btn" id="zoomOut" aria-label="تصغير" title="تصغير">−</button>
+            <output id="zoomLabel" aria-live="off">100%</output>
+            <button type="button" class="icon-btn" id="zoomIn" aria-label="تكبير" title="تكبير">+</button>
+            <button type="button" class="icon-btn wide" id="zoomFit" title="ملاءمة الشاشة">ملاءمة</button>
+          </div>
+          <span class="tip">عجلة الماوس أو القرص بإصبعين للتكبير، واسحب للتحريك — اللوحتان متزامنتان</span>
+        </div>
 
-    <!-- 3) خيارات المعالجة -->
-    <section class="card" aria-labelledby="h-opts">
-      <h2 id="h-opts"><span class="num">3</span>خيارات المعالجة</h2>
+        <div class="views">
+          <figure class="pane">
+            <figcaption>قبل</figcaption>
+            <div class="view checker" id="viewBefore" tabindex="0" aria-label="الصورة الأصلية">
+              <div class="layer" id="layerBefore"><canvas id="beforeCanvas"></canvas></div>
+              <div class="pick-hint" id="pickHint" hidden>اضغط على الصورة لاختيار لون الخلفية</div>
+            </div>
+          </figure>
+          <figure class="pane">
+            <figcaption>بعد <span class="live" id="liveBadge" hidden><i></i><span id="liveText">جارٍ التحديث…</span></span></figcaption>
+            <div class="view checker" id="viewAfter" aria-label="نتيجة المعالجة">
+              <div class="layer" id="layerAfter"><img id="afterImg" alt="التصميم بعد المعالجة" draggable="false"></div>
+              <div class="overlay" id="afterOverlay" hidden><span class="spin" aria-hidden="true"></span><span id="overlayText"></span></div>
+              <div class="overlay error" id="afterError" role="alert" hidden></div>
+            </div>
+          </figure>
+        </div>
 
-      <div class="opt">
-        <label class="switch">
-          <input type="checkbox" id="removeBg" checked>
-          <span class="track"></span>
-          <span class="label"><strong>إزالة الخلفية</strong><small>تُتجاوز تلقائياً إذا كانت الصورة شفافة أصلاً.</small></span>
-        </label>
-
-        <div id="bgOptions">
-          <div class="seg" role="radiogroup" aria-label="طريقة إزالة الخلفية">
-            <label>
-              <input type="radio" name="bgMode" value="solid" checked>
-              <span><strong>تصميم بخلفية سادة</strong><small>شعارات ونصوص وتصاميم بخلفية بلون واحد</small></span>
-            </label>
-            <label>
-              <input type="radio" name="bgMode" value="ai">
-              <span><strong>صورة واقعية (ذكاء اصطناعي)</strong><small>صور أشخاص ومنتجات وخلفيات معقدة</small></span>
+        <div class="swatches-row">
+          <strong>خلفية المعاينة (لون التيشيرت)</strong>
+          <div class="swatches" id="swatches" role="radiogroup" aria-label="لون خلفية المعاينة">
+            <button type="button" role="radio" aria-checked="true" class="sw active" data-color=""><i class="checker"></i><span>شفاف</span></button>
+            <button type="button" role="radio" aria-checked="false" class="sw" data-color="#ffffff"><i style="background:#ffffff"></i><span>أبيض</span></button>
+            <button type="button" role="radio" aria-checked="false" class="sw" data-color="#111111"><i style="background:#111111"></i><span>أسود</span></button>
+            <button type="button" role="radio" aria-checked="false" class="sw" data-color="#c1121f"><i style="background:#c1121f"></i><span>أحمر</span></button>
+            <button type="button" role="radio" aria-checked="false" class="sw" data-color="#1b2a49"><i style="background:#1b2a49"></i><span>كحلي</span></button>
+            <button type="button" role="radio" aria-checked="false" class="sw" data-color="#8a8f98"><i style="background:#8a8f98"></i><span>رمادي</span></button>
+            <label class="sw custom" id="customSw">
+              <i id="customDot" class="rainbow"></i><span>لون مخصص</span>
+              <input type="color" id="customColor" value="#2f855a" aria-label="اختيار لون مخصص">
             </label>
           </div>
+          <small class="hint">انتبه للألوان التي تضيع أو تختفي على لون التيشيرت. المعاينة مصغّرة وتقريبية؛ الملف النهائي بدقة الطباعة الكاملة.</small>
+        </div>
+      </div>
 
-          <div id="solidPanel">
+      <aside class="controls" aria-label="لوحة التحكم">
+        <!-- المقاس -->
+        <section class="card">
+          <h2>مقاس الطباعة</h2>
+          <div class="size-row">
+            <label class="field"><span>العرض (سم)</span>
+              <input type="text" class="num-input" id="w" inputmode="decimal" autocomplete="off" enterkeyhint="next"></label>
+            <span class="times" aria-hidden="true">×</span>
+            <label class="field"><span>الطول (سم)</span>
+              <input type="text" class="num-input" id="h" inputmode="decimal" autocomplete="off" enterkeyhint="done"></label>
+          </div>
+          <label class="switch lock">
+            <input type="checkbox" id="lock" checked>
+            <span class="track"></span>
+            <span class="label"><strong>قفل النسبة</strong><small id="lockHint">تغيير أحدهما يحسب الآخر حسب نسبة الصورة.</small></span>
+          </label>
+          <p class="msg err" id="sizeError" role="alert" hidden></p>
+          <ul class="stats" id="sizeStats" aria-live="polite">
+            <li id="dpiLine"></li>
+            <li id="pxLine"></li>
+          </ul>
+          <p class="msg warn" id="dpiWarn" role="alert" hidden></p>
+          <p class="msg note" id="ratioNote" hidden></p>
+        </section>
+
+        <!-- إزالة الخلفية -->
+        <section class="card">
+          <h2>إزالة الخلفية</h2>
+          <div class="seg" role="radiogroup" aria-label="طريقة إزالة الخلفية">
+            <label><input type="radio" name="bgMode" value="solid" checked>
+              <span><strong>تصميم بخلفية سادة</strong><small>شعارات ونصوص بخلفية بلون واحد</small></span></label>
+            <label><input type="radio" name="bgMode" value="ai">
+              <span><strong>ذكاء اصطناعي</strong><small>صور واقعية وخلفيات معقدة</small></span></label>
+            <label><input type="radio" name="bgMode" value="none">
+              <span><strong>بدون</strong><small>إبقاء الصورة كما هي</small></span></label>
+          </div>
+          <p class="msg note" id="transNote" hidden>الصورة شفافة أصلاً، فتُتجاوز إزالة الخلفية تلقائياً.</p>
+
+          <div id="solidBox">
             <div class="bg-pick">
               <span class="bgchip checker" id="bgChip"><i></i></span>
-              <span id="bgLabel">لون الخلفية: يُكتشف تلقائياً من حواف الصورة</span>
-              <button type="button" class="btn ghost small" id="bgAuto" hidden>رجوع للاكتشاف التلقائي</button>
+              <span id="bgLabel">لون الخلفية: يُكتشف تلقائياً</span>
+              <button type="button" class="btn ghost small" id="bgAuto" hidden>رجوع للتلقائي</button>
             </div>
-            <div class="pick-wrap" id="pickWrap" hidden>
-              <canvas id="pickCanvas" aria-label="الصورة: اضغط على أي نقطة لاختيار لون الخلفية"></canvas>
-            </div>
-            <small class="hint" id="pickHint" hidden>اضغط على الصورة لاختيار لون الخلفية يدوياً.</small>
-
-            <div class="opt-head tol">
-              <label for="tol"><strong>حساسية اللون</strong></label>
-              <output id="tolOut" for="tol">متوسطة (25)</output>
-            </div>
+            <small class="hint">اضغط على صورة «قبل» لاختيار لون الخلفية يدوياً.</small>
+            <div class="opt-head"><label for="tol"><strong>حساسية اللون</strong></label><output id="tolOut" for="tol"></output></div>
             <input type="range" id="tol" min="0" max="100" step="5" value="25">
-            <small class="hint">كلما ارتفعت حُذفت ألوان أبعد عن لون الخلفية (مفيد لصور JPG المضغوطة). خفّضها إذا بدأت تأكل من ألوان قريبة من الخلفية. العناصر الداخلية بنفس لون الخلفية (مثل نص أبيض داخل شكل ملوّن) لا تُحذف أبداً.</small>
+            <small class="hint">كلما ارتفعت حُذفت ألوان أبعد عن لون الخلفية. العناصر الداخلية بنفس لون الخلفية (مثل نص أبيض داخل شكل ملوّن) لا تُحذف.</small>
           </div>
-          <small class="hint" id="aiHint" hidden>وضع الذكاء الاصطناعي يركّز على العنصر الأبرز في الصورة، وقد يحذف عناصر بيضاء أو نصوصاً منفصلة عن الشكل الرئيسي.</small>
+          <small class="hint" id="aiHint" hidden>يركّز على العنصر الأبرز، وقد يحذف عناصر بيضاء أو نصوصاً منفصلة عن الشكل الرئيسي. أول معاينة تأخذ بضع ثوانٍ ثم تصير فورية.</small>
+        </section>
+
+        <!-- الحواف والشفافية -->
+        <section class="card">
+          <h2>الحواف والشفافية</h2>
+          <div class="opt-head"><label for="erode"><strong>تصغير الحواف</strong></label><output id="erodeOut" for="erode"></output></div>
+          <input type="range" id="erode" min="0" max="3" step="1" value="1">
+          <small class="hint">يقصّ حافة التصميم للداخل لإخفاء أي هالة متبقية.</small>
+
+          <div class="opt-head sep"><label for="alpha"><strong>حدة الشفافية</strong></label><output id="alphaOut" for="alpha"></output></div>
+          <input type="range" id="alpha" min="5" max="95" step="5" value="50">
+          <label class="check"><input type="checkbox" id="alphaKeep"><span>بدون تغيير (إبقاء الشفافية الجزئية)</span></label>
+          <small class="hint">الظلال والتدرجات شبه الشفافة تظهر كبقع في الطباعة؛ العتبة تحوّلها إلى شفاف أو معتم.</small>
+        </section>
+
+        <div class="cta">
+          <button type="button" class="btn primary big" id="download" disabled>حمّل الملف النهائي</button>
+          <button type="button" class="btn ghost" id="reset">رجوع للافتراضي</button>
         </div>
-      </div>
-
-      <div class="opt">
-        <div class="opt-head">
-          <label for="erode"><strong>تصغير الحواف</strong></label>
-          <output id="erodeOut" for="erode">1 بكسل</output>
-        </div>
-        <input type="range" id="erode" min="0" max="3" step="1" value="1">
-        <div class="ticks" aria-hidden="true"><span>0</span><span>1</span><span>2</span><span>3</span></div>
-        <small class="hint">يقصّ حافة التصميم للداخل لإخفاء أي هالة متبقية من الخلفية القديمة.</small>
-      </div>
-
-      <div class="opt">
-        <div class="opt-head">
-          <label for="alpha"><strong>حدة الشفافية</strong></label>
-          <output id="alphaOut" for="alpha">معتدلة (50%)</output>
-        </div>
-        <input type="range" id="alpha" min="5" max="95" step="5" value="50">
-        <label class="check">
-          <input type="checkbox" id="alphaKeep">
-          <span>بدون تغيير (إبقاء الشفافية الجزئية كما هي)</span>
-        </label>
-        <small class="hint">الظلال والتدرجات شبه الشفافة تظهر كبقع في الطباعة. هذه القيمة تحدد العتبة: البكسل الأقل عتمة منها يصبح شفافاً تماماً، والأعلى يصبح معتماً.</small>
-      </div>
-    </section>
-
-    <div class="actions">
-      <button type="button" class="btn primary big" id="go" disabled>جهّز التصميم</button>
-    </div>
-
-    <!-- التقدم -->
-    <section class="card" id="progressCard" aria-live="polite" hidden>
-      <h2>جارٍ التجهيز…</h2>
-      <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar">
-        <div class="fill" id="barFill"></div>
-      </div>
-      <div class="bar-meta"><span id="stage">…</span><b id="pct">0%</b></div>
-      <ul class="notes" id="liveNotes"></ul>
-    </section>
-
-    <!-- خطأ -->
-    <section class="card error-card" id="errorCard" role="alert" hidden>
-      <h2>تعذّرت المعالجة</h2>
-      <p id="errorText"></p>
-      <ul class="notes" id="errorNotes"></ul>
-    </section>
-
-    <!-- النتيجة -->
-    <section class="card" id="resultCard" hidden>
-      <h2>النتيجة</h2>
-      <ul class="notes" id="resultNotes"></ul>
-
-      <div class="compare">
-        <figure>
-          <figcaption>قبل</figcaption>
-          <div class="stage checker" data-stage><img id="imgBefore" alt="الصورة قبل المعالجة"></div>
-        </figure>
-        <figure>
-          <figcaption>بعد</figcaption>
-          <div class="stage checker" data-stage><img id="imgAfter" alt="التصميم بعد المعالجة"></div>
-        </figure>
-      </div>
-
-      <div class="swatches-wrap">
-        <strong>معاينة على لون التيشيرت</strong>
-        <div class="swatches" id="swatches" role="radiogroup" aria-label="لون خلفية المعاينة">
-          <button type="button" role="radio" aria-checked="true" class="sw active" data-color="" title="شفاف"><i class="checker"></i><span>شفاف</span></button>
-          <button type="button" role="radio" aria-checked="false" class="sw" data-color="#ffffff" title="أبيض"><i style="background:#ffffff"></i><span>أبيض</span></button>
-          <button type="button" role="radio" aria-checked="false" class="sw" data-color="#111111" title="أسود"><i style="background:#111111"></i><span>أسود</span></button>
-          <button type="button" role="radio" aria-checked="false" class="sw" data-color="#c1121f" title="أحمر"><i style="background:#c1121f"></i><span>أحمر</span></button>
-          <button type="button" role="radio" aria-checked="false" class="sw" data-color="#1b2a49" title="كحلي"><i style="background:#1b2a49"></i><span>كحلي</span></button>
-          <button type="button" role="radio" aria-checked="false" class="sw" data-color="#8a8f98" title="رمادي"><i style="background:#8a8f98"></i><span>رمادي</span></button>
-          <label class="sw custom" id="customSw" title="لون مخصص">
-            <i id="customDot" class="rainbow"></i><span>لون مخصص</span>
-            <input type="color" id="customColor" value="#2f855a" aria-label="اختيار لون مخصص">
-          </label>
-        </div>
-        <small class="hint">انتبه للألوان التي تضيع أو تختفي على لون التيشيرت — خصوصاً الأسود على الأسود والأبيض على الأبيض.</small>
-      </div>
-
-      <ul class="chips" id="chips"></ul>
-
-      <div class="actions row">
-        <a class="btn primary big" id="download" href="#" download>تحميل PNG</a>
-        <button type="button" class="btn ghost" id="again">معالجة صورة جديدة</button>
-      </div>
-      <p class="hint">المعاينة مصغّرة للعرض فقط؛ الملف المحمَّل بمقاس الطباعة الكامل. تُحذف الملفات من الخادم تلقائياً بعد فترة قصيرة.</p>
+      </aside>
     </section>
   </main>
 
-  <footer class="wrap foot">DTF Prep — تجهيز التصميم فقط (بدون White Base أو RIP أو Gang Sheet)</footer>
+  <!-- نافذة المعالجة النهائية -->
+  <div class="modal" id="finalModal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="finalTitle">
+      <h2 id="finalTitle">جارٍ تجهيز الملف النهائي…</h2>
+      <div id="finalProgress">
+        <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar"><div class="fill" id="barFill"></div></div>
+        <div class="bar-meta"><span id="stage">…</span><b id="pct">0%</b></div>
+      </div>
+      <p class="msg err" id="finalError" role="alert" hidden></p>
+      <div id="finalDone" hidden>
+        <ul class="notes" id="finalNotes"></ul>
+        <ul class="chips" id="chips"></ul>
+        <div class="actions">
+          <a class="btn primary big" id="finalLink" href="#" download>تحميل PNG</a>
+        </div>
+      </div>
+      <div class="actions end"><button type="button" class="btn ghost" id="closeModal" hidden>إغلاق</button></div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

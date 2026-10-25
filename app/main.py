@@ -11,13 +11,15 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, config
 from .jobs import manager
-from .pipeline import Params, UserError, check_upload_header, validate_params
+from .pipeline import Params, UserError, check_upload_header, validate_options, validate_params
+from .sessions import store as sessions
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("dtf")
@@ -88,6 +90,8 @@ async def get_config():
             "min_side_cm": config.MIN_SIDE_CM,
             "max_side_cm": config.MAX_SIDE_CM,
             "max_output_mp": config.MAX_OUTPUT_PIXELS // 1_000_000,
+            "low_dpi_warning": config.LOW_DPI_WARNING,
+            "preview_side": config.LIVE_PREVIEW_SIDE,
             "version": __version__,
         },
         headers=NO_STORE,
@@ -99,20 +103,32 @@ async def health():
     return {"status": "ok"}
 
 
-@app.post("/api/process")
-async def start_process(
-    file: UploadFile = File(...),
-    width_cm: float = Form(...),
-    height_cm: float = Form(...),
-    remove_bg: bool = Form(True),
-    bg_mode: str = Form("solid"),
-    bg_tolerance: int = Form(25),
-    bg_color: str = Form(""),
-    erode_px: int = Form(1),
-    alpha_mode: str = Form("threshold"),
-    alpha_threshold: int = Form(50),
-):
-    params = Params(
+async def _save_upload(file: UploadFile, dest: Path) -> None:
+    """يحفظ الملف المرفوع مع التحقق من الحجم والصيغة (يرمي UserError برسالة عربية)."""
+    size = 0
+    try:
+        with open(dest, "wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > config.MAX_UPLOAD_BYTES:
+                    raise UserError(f"حجم الملف كبير جداً. الحد الأقصى {config.MAX_UPLOAD_MB} ميجابايت.")
+                out.write(chunk)
+    finally:
+        await file.close()
+    if size == 0:
+        raise UserError("الملف المرفوع فارغ.")
+    check_upload_header(dest)
+
+
+def _upload_error(e: UserError) -> JSONResponse:
+    code = 413 if "كبير جداً" in str(e) and "ميجابايت" in str(e) else 400
+    return _err(str(e), code)
+
+
+def _make_params(
+    width_cm, height_cm, remove_bg, bg_mode, bg_tolerance, bg_color, erode_px, alpha_mode, alpha_threshold
+) -> Params:
+    return Params(
         width_cm=width_cm,
         height_cm=height_cm,
         remove_bg=remove_bg,
@@ -123,33 +139,125 @@ async def start_process(
         alpha_mode=alpha_mode,
         alpha_threshold=alpha_threshold,
     )
+
+
+SESSION_GONE = "انتهت صلاحية جلسة الصورة. ارفع الصورة من جديد."
+
+
+@app.post("/api/process")
+async def start_process(
+    file: UploadFile | None = File(None),
+    session_id: str = Form(""),
+    width_cm: float = Form(...),
+    height_cm: float = Form(...),
+    remove_bg: bool = Form(True),
+    bg_mode: str = Form("solid"),
+    bg_tolerance: int = Form(25),
+    bg_color: str = Form(""),
+    erode_px: int = Form(1),
+    alpha_mode: str = Form("threshold"),
+    alpha_threshold: int = Form(50),
+):
+    """المعالجة الكاملة بدقة الطباعة. تقبل ملفاً مرفوعاً، أو session_id لجلسة المعاينة (بدون إعادة رفع)."""
+    params = _make_params(
+        width_cm, height_cm, remove_bg, bg_mode, bg_tolerance, bg_color, erode_px, alpha_mode, alpha_threshold
+    )
     validate_params(params)  # نفشل بسرعة قبل حفظ أي شيء
+
+    sess = None
+    if session_id:
+        sess = sessions.get(session_id)
+        if sess is None:
+            return _err(SESSION_GONE, 404)
+    elif file is None:
+        return _err("لم يتم رفع أي صورة. اختر صورة أولاً.", 422)
 
     jid, job_dir = manager.new_job_dir()
     upload = job_dir / "upload.bin"
     try:
-        size = 0
-        with open(upload, "wb") as out:
-            while chunk := await file.read(1024 * 1024):
-                size += len(chunk)
-                if size > config.MAX_UPLOAD_BYTES:
-                    raise UserError(f"حجم الملف كبير جداً. الحد الأقصى {config.MAX_UPLOAD_MB} ميجابايت.")
-                out.write(chunk)
-        if size == 0:
-            raise UserError("الملف المرفوع فارغ.")
-        check_upload_header(upload)
+        if sess is not None:
+            await run_in_threadpool(shutil.copyfile, sess.orig, upload)
+        else:
+            await _save_upload(file, upload)
     except UserError as e:
         shutil.rmtree(job_dir, ignore_errors=True)
-        code = 413 if "كبير جداً" in str(e) and "ميجابايت" in str(e) else 400
-        return _err(str(e), code)
+        return _upload_error(e)
     except Exception:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise
-    finally:
-        await file.close()
 
     manager.submit(jid, job_dir, upload, params)
     return JSONResponse({"job_id": jid}, headers=NO_STORE)
+
+
+# ---------------------------------------------------------------------------
+# جلسات المعاينة المباشرة
+# ---------------------------------------------------------------------------
+@app.post("/api/sessions")
+async def create_session(file: UploadFile = File(...)):
+    sid, sdir = sessions.new_dir()
+    try:
+        orig = sdir / "orig.bin"
+        await _save_upload(file, orig)
+        sess = await run_in_threadpool(sessions.create, sid, sdir, orig)
+    except UserError as e:
+        shutil.rmtree(sdir, ignore_errors=True)
+        return _upload_error(e)
+    except Exception:
+        shutil.rmtree(sdir, ignore_errors=True)
+        raise
+    return JSONResponse(
+        {
+            "session_id": sess.id,
+            "width": sess.width,
+            "height": sess.height,
+            "preview_width": int(sess.small_rgb.shape[1]),
+            "preview_height": int(sess.small_rgb.shape[0]),
+            "transparent": sess.transparent,
+            "auto_bg": sess.auto_bg,
+        },
+        headers=NO_STORE,
+    )
+
+
+@app.post("/api/sessions/{sid}/preview")
+def session_preview(
+    sid: str,
+    width_cm: float = Form(0.0),
+    height_cm: float = Form(0.0),
+    remove_bg: bool = Form(True),
+    bg_mode: str = Form("solid"),
+    bg_tolerance: int = Form(25),
+    bg_color: str = Form(""),
+    erode_px: int = Form(1),
+    alpha_mode: str = Form("threshold"),
+    alpha_threshold: int = Form(50),
+):
+    """معاينة سريعة على نسخة مصغّرة: PNG شفاف بنفس مراحل المعالجة (بدون تكبير)."""
+    sess = sessions.get(sid)
+    if sess is None:
+        return _err(SESSION_GONE, 404)
+    params = _make_params(
+        width_cm, height_cm, remove_bg, bg_mode, bg_tolerance, bg_color, erode_px, alpha_mode, alpha_threshold
+    )
+    validate_options(params)
+    res = sessions.render_preview(sess, params, width_cm, height_cm)
+    return Response(
+        content=res.png,
+        media_type="image/png",
+        headers={
+            **NO_STORE,
+            "X-Bg-Color": res.bg_color,
+            "X-Bg-Manual": "1" if res.bg_manual else "0",
+            "X-Render-Ms": str(res.ms),
+        },
+    )
+
+
+@app.delete("/api/sessions/{sid}")
+async def session_delete(sid: str):
+    sessions.delete(sid)
+    return JSONResponse({"ok": True}, headers=NO_STORE)
 
 
 def _job_or_404(jid: str):

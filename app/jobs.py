@@ -161,6 +161,8 @@ class JobManager:
         # مجلدات يتيمة (مثلاً رفع فشل قبل إنشاء المهمة)
         known = {j.dir.name for j in self._jobs.values()}
         for d in config.TMP_ROOT.glob("*"):
+            if d.name.startswith("s-"):
+                continue  # مجلدات الجلسات يديرها SessionStore
             if d.is_dir() and d.name not in known and now - d.stat().st_mtime > config.JOB_TTL_SECONDS:
                 shutil.rmtree(d, ignore_errors=True)
         return len(expired)
